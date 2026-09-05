@@ -2,8 +2,8 @@ import os
 import threading
 import telebot
 from telebot import types
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 from flask import Flask
 
 # Cấu hình Token và biến môi trường
@@ -30,7 +30,7 @@ def run_flask():
 
 # --- KẾT NỐI VÀ KHỞI TẠO DATABASE ---
 def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
     return conn
 
 def init_db():
@@ -618,3 +618,4 @@ if __name__ == "__main__":
 
     print("✨ Axiom Bot Web Service đang chạy...")
     bot.infinity_polling()
+ 
