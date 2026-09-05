@@ -78,6 +78,49 @@ def check_user_membership(user_id):
         print(f"Lỗi kiểm tra nhóm: {e}")
     return False
 
+# --- HÀM HIỂN THỊ MENU CHÍNH (KÈM SỐ DƯ VÀ KHO ACC) ---
+def send_main_shop_menu(chat_id, user_id, message_id=None, edit=False):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    # Lấy số dư user
+    cur.execute("SELECT balance FROM users WHERE telegram_id = %s", (user_id,))
+    user_data = cur.fetchone()
+    balance = user_data['balance'] if user_data else 0
+    
+    # Lấy số lượng tồn kho
+    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_5_8' AND sold = FALSE")
+    stock_5_8 = cur.fetchone()['count']
+    
+    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_30' AND sold = FALSE")
+    stock_30 = cur.fetchone()['count']
+    
+    cur.close()
+    conn.close()
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton(f"📦 Clone Level 5–8 (Còn: {stock_5_8} acc) - 10 Xu", callback_data="shop_view_level_5_8"),
+        types.InlineKeyboardButton(f"📦 Clone Level 30 (Còn: {stock_30} acc) - 15 Xu", callback_data="shop_view_level_30"),
+        types.InlineKeyboardButton("💡 Cách kiếm Xu miễn phí", callback_data="how_to_earn_xu"),
+        types.InlineKeyboardButton("👤 Kiểm tra tài khoản & Số dư (/info)", callback_data="view_my_info")
+    )
+    
+    text = (
+        "🔥 **HỆ THỐNG SHOP ACC FREE FIRE TỰ ĐỘNG** 🔥\n"
+        "────────────────────────\n"
+        f"💰 **Số dư của bạn:** `{balance} Xu`\n"
+        "⚡ *Vui lòng chọn loại tài khoản hoặc tính năng bên dưới:*"
+    )
+    
+    if edit and message_id:
+        try:
+            bot.edit_message_text(text, chat_id, message_id, reply_markup=markup, parse_mode="Markdown")
+        except:
+            pass
+    else:
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
 # --- XỬ LÝ /START & XÁC MINH ---
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -111,11 +154,11 @@ def handle_start(message):
     if not user['verified']:
         if check_user_membership(user_id):
             verify_user(user_id)
-            send_command_guide(message.chat.id)
+            send_main_shop_menu(message.chat.id, user_id)
         else:
             send_verification_prompt(message.chat.id)
     else:
-        send_command_guide(message.chat.id)
+        send_main_shop_menu(message.chat.id, user_id)
 
 def verify_user(user_id):
     conn = get_db_connection()
@@ -143,7 +186,7 @@ def verify_user(user_id):
                     (new_ids_str, ref_id)
                 )
                 try:
-                    bot.send_message(ref_id, f"🎉 **THƯỞNG GIỚI THIỆU**\n\nBạn nhận được **+2 Xu** do có thành viên mới (`{user_id}`) đã xác minh!", parse_mode="Markdown")
+                    bot.send_message(ref_id, f"🎉 **THƯỞNG GIỚI THIỆU THÀNH VIÊN**\n\nBạn vừa nhận thành công **+2 Xu** do có thành viên mới (`{user_id}`) thông qua link giới thiệu đã hoàn tất xác minh nhóm!", parse_mode="Markdown")
                 except:
                     pass
 
@@ -154,14 +197,15 @@ def verify_user(user_id):
 def send_verification_prompt(chat_id):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📢 Tham gia nhóm ngay", url=f"https://t.me/{REQUIRED_GROUP.replace('@','')}"),
-        types.InlineKeyboardButton("🔄 Tôi đã tham gia (Xác minh)", callback_data="check_membership")
+        types.InlineKeyboardButton("📢 Tham gia nhóm/kênh ngay", url=f"https://t.me/{REQUIRED_GROUP.replace('@','')}"),
+        types.InlineKeyboardButton("🔄 Xác minh (Tôi đã tham gia)", callback_data="check_membership")
     )
     
     text = (
         "⚠️ **YÊU CẦU XÁC MINH TÀI KHOẢN**\n\n"
-        f"Chào bạn đến với hệ thống **Shop Acc Free Fire**!\n"
-        f"Bạn cần tham gia nhóm **{REQUIRED_GROUP}** để sử dụng bot."
+        f"Chào mừng bạn đến với hệ thống **Shop Acc Free Fire Tự Động**!\n\n"
+        f"🔒 Để đảm bảo quyền lợi và mở khóa toàn bộ cửa hàng, bạn bắt buộc phải tham gia kênh/nhóm tại: **{REQUIRED_GROUP}**.\n\n"
+        "👉 *Sau khi đã tham gia nhóm xong, vui lòng bấm nút màu xanh bên dưới.*"
     )
     bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
@@ -170,58 +214,88 @@ def callback_check_membership(call):
     user_id = call.from_user.id
     if check_user_membership(user_id):
         verify_user(user_id)
-        bot.answer_callback_query(call.id, "🎉 Xác minh thành công!")
+        bot.answer_callback_query(call.id, "🎉 Xác minh tài khoản thành công!")
         try:
             bot.delete_message(call.message.chat.id, call.message.message_id)
         except:
             pass
-        send_command_guide(call.message.chat.id)
+        send_main_shop_menu(call.message.chat.id, user_id)
     else:
-        bot.answer_callback_query(call.id, "❌ Bạn chưa tham gia nhóm yêu cầu!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Bạn vẫn chưa tham gia nhóm yêu cầu!", show_alert=True)
 
-def send_command_guide(chat_id):
-    text = (
-        "🔥 **HỆ THỐNG SHOP ACC FREE FIRE** 🔥\n"
-        "────────────────────────\n"
-        "Danh sách lệnh hệ thống:\n\n"
-        "• /shop - Xem danh mục và mua tài khoản\n"
-        "• /info - Kiểm tra số Xu cá nhân\n"
-        "• /ref - Lấy link giới thiệu nhận Xu\n"
-        "• /lenh - Xem bảng hướng dẫn lệnh"
-    )
-    bot.send_message(chat_id, text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['lenh', 'help'])
-def handle_lenh(message):
-    send_command_guide(message.chat.id)
-
-# --- SHOP ACC FREE FIRE ---
-@bot.message_handler(commands=['shop'])
+# Lệnh /shop và /lenh đồng bộ mở thẳng menu chính
+@bot.message_handler(commands=['shop', 'lenh', 'help'])
 def shop_menu(message):
+    send_main_shop_menu(message.chat.id, message.from_user.id)
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_shop")
+def callback_back_shop(call):
+    send_main_shop_menu(call.message.chat.id, call.from_user.id, call.message.message_id, edit=True)
+
+# --- NÚT HƯỚNG DẪN CÁCH KIẾM XU MIỄN PHÍ ---
+@bot.callback_query_handler(func=lambda call: call.data == "how_to_earn_xu")
+def callback_how_to_earn_xu(call):
+    user_id = call.from_user.id
+    bot_info = bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
     conn = get_db_connection()
     cur = conn.cursor()
-    
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_5_8' AND sold = FALSE")
-    stock_5_8 = cur.fetchone()['count']
-    
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_30' AND sold = FALSE")
-    stock_30 = cur.fetchone()['count']
-    
+    cur.execute("SELECT referred_ids, ref_xu FROM users WHERE telegram_id = %s", (user_id,))
+    user = cur.fetchone()
     cur.close()
     conn.close()
 
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton(f"📦 Clone Level 5–8 (Kho: {stock_5_8}) - 10 Xu", callback_data="shop_view_level_5_8"),
-        types.InlineKeyboardButton(f"📦 Clone Level 30 (Kho: {stock_30}) - 15 Xu", callback_data="shop_view_level_30")
-    )
-    text = (
-        "🔥 **DANH MỤC SHOP ACC FREE FIRE**\n"
-        "────────────────────────\n"
-        "⚡ Chọn loại tài khoản bạn muốn xem:"
-    )
-    bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="Markdown")
+    current_ids = user['referred_ids'] or ""
+    ref_count = len(current_ids.split(',')) if current_ids else 0
 
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(types.InlineKeyboardButton("⬅️ Quay lại Cửa hàng", callback_data="back_shop"))
+
+    text = (
+        "💡 **HƯỚNG DẪN CÁCH KIẾM XU MIỄN PHÍ**\n"
+        "────────────────────────\n"
+        "Bạn có thể nhận thêm Xu hoàn toàn miễn phí bằng cách giới thiệu bạn bè tham gia bot thông qua đường link riêng của bạn:\n\n"
+        f"🔗 **Link giới thiệu của bạn:**\n`{ref_link}`\n\n"
+        "📌 **Quy chế nhận thưởng:**\n"
+        "• Gửi link này cho bạn bè hoặc chia sẻ lên các nhóm.\n"
+        "• Khi có người bấm vào link, mở bot và **hoàn tất xác minh tham gia nhóm**, hệ thống sẽ tự động cộng ngay **+2 Xu** vào ví của bạn!\n\n"
+        f"📊 **Thống kê của bạn:**\n"
+        f"• Đã mời thành công: `{ref_count} người`\n"
+        f"• Tổng Xu nhận được: `{user['ref_xu']} Xu`"
+    )
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+    except:
+        pass
+
+@bot.message_handler(commands=['ref'])
+def referral_info(message):
+    # Lệnh /ref gọi tương đương tính năng kiếm xu
+    user_id = message.from_user.id
+    bot_info = bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT referred_ids, ref_xu FROM users WHERE telegram_id = %s", (user_id,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    current_ids = user['referred_ids'] or ""
+    ref_count = len(current_ids.split(',')) if current_ids else 0
+
+    text = (
+        "🎁 **HỆ THỐNG GIỚI THIỆU BÈ BẠN - NHẬN XU**\n"
+        "────────────────────────\n"
+        f"🔗 **Link của bạn:**\n`{ref_link}`\n\n"
+        f"• Đã giới thiệu: `{ref_count} người`\n"
+        f"• Thưởng nhận được: `{user['ref_xu']} Xu`"
+    )
+    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+
+# --- XEM CHI TIẾT SẢN PHẨM ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("shop_view_"))
 def callback_shop_view(call):
     category = call.data.replace("shop_view_", "")
@@ -237,47 +311,23 @@ def callback_shop_view(call):
 
     markup = types.InlineKeyboardMarkup(row_width=1)
     if count > 0:
-        markup.add(types.InlineKeyboardButton(f"🛒 Mua ngay ({price} Xu)", callback_data=f"buy_{category}"))
-    markup.add(types.InlineKeyboardButton("⬅️ Quay lại", callback_data="back_shop"))
+        markup.add(types.InlineKeyboardButton(f"🛒 Xác nhận mua ngay ({price} Xu)", callback_data=f"buy_{category}"))
+    markup.add(types.InlineKeyboardButton("⬅️ Quay lại Cửa hàng", callback_data="back_shop"))
 
     text = (
-        f"📦 **CHI TIẾT SẢN PHẨM**\n"
+        f"📦 **CHI TIẾT TÀI KHOẢN**\n"
         f"────────────────────────\n"
         f"• **Loại:** `{cat_name}`\n"
         f"• **Giá:** `{price} Xu`\n"
-        f"• **Kho:** `{count} acc`"
+        f"• **Kho còn lại:** `{count} tài khoản`\n\n"
+        f"📌 *Hệ thống sẽ tự động trừ Xu và gửi thông tin tài khoản (Email|Mật khẩu) ngay lập tức khi mua.*"
     )
     try:
         bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
     except:
         pass
 
-@bot.callback_query_handler(func=lambda call: call.data == "back_shop")
-def callback_back_shop(call):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_5_8' AND sold = FALSE")
-    stock_5_8 = cur.fetchone()['count']
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_30' AND sold = FALSE")
-    stock_30 = cur.fetchone()['count']
-    cur.close()
-    conn.close()
-
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton(f"📦 Clone Level 5–8 (Kho: {stock_5_8}) - 10 Xu", callback_data="shop_view_level_5_8"),
-        types.InlineKeyboardButton(f"📦 Clone Level 30 (Kho: {stock_30}) - 15 Xu", callback_data="shop_view_level_30")
-    )
-    text = (
-        "🔥 **DANH MỤC SHOP ACC FREE FIRE**\n"
-        "────────────────────────\n"
-        "⚡ Chọn loại tài khoản bạn muốn xem:"
-    )
-    try:
-        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
-    except:
-        pass
-
+# --- MUA HÀNG ---
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def callback_buy(call):
     category = call.data.replace("buy_", "")
@@ -290,7 +340,7 @@ def callback_buy(call):
     cur.execute("SELECT balance FROM users WHERE telegram_id = %s", (user_id,))
     user = cur.fetchone()
     if not user or user['balance'] < price:
-        bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua!", show_alert=True)
+        bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua sản phẩm này! Hãy bấm vào mục 'Cách kiếm Xu miễn phí' để nhận thêm.", show_alert=True)
         cur.close()
         conn.close()
         return
@@ -316,12 +366,42 @@ def callback_buy(call):
 
     bot.answer_callback_query(call.id, "✅ Mua thành công!")
     success_text = (
-        "🎉 **MUA HÀNG THÀNH CÔNG!**\n"
+        "🎉 **MUA TÀI KHOẢN THÀNH CÔNG!**\n"
         "────────────────────────\n"
         f"📦 **Thông tin tài khoản:**\n"
         f"`{acc_data}`"
     )
     bot.send_message(call.message.chat.id, success_text, parse_mode="Markdown")
+
+# --- XEM THÔNG TIN CÁ NHÂN ---
+@bot.callback_query_handler(func=lambda call: call.data == "view_my_info")
+def callback_view_info(call):
+    user_id = call.from_user.id
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE telegram_id = %s", (user_id,))
+    user = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    current_ids = user['referred_ids'] or ""
+    ref_count = len(current_ids.split(',')) if current_ids else 0
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(types.InlineKeyboardButton("⬅️ Quay lại Cửa hàng", callback_data="back_shop"))
+
+    text = (
+        "👤 **HỒ SƠ TÀI KHOẢN CÁ NHÂN**\n"
+        "────────────────────────\n"
+        f"🆔 ID: `{user['telegram_id']}`\n"
+        f"💰 Số dư: `{user['balance']} Xu`\n"
+        f"👥 Đã giới thiệu: `{ref_count} người`\n"
+        f"🎁 Tổng Xu kiếm được từ ref: `{user['ref_xu']} Xu`"
+    )
+    try:
+        bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
+    except:
+        pass
 
 @bot.message_handler(commands=['info'])
 def account_info(message):
@@ -341,36 +421,12 @@ def account_info(message):
     ref_count = len(current_ids.split(',')) if current_ids else 0
 
     text = (
-        "👤 **THÔNG TIN TÀI KHOẢN**\n"
+        "👤 **HỒ SƠ TÀI KHOẢN CÁ NHÂN**\n"
         "────────────────────────\n"
         f"🆔 ID: `{user['telegram_id']}`\n"
         f"💰 Số dư: `{user['balance']} Xu`\n"
-        f"👥 Đã giới thiệu: `{ref_count}`"
-    )
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-@bot.message_handler(commands=['ref'])
-def referral_info(message):
-    user_id = message.from_user.id
-    bot_info = bot.get_me()
-    ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT referred_ids, ref_xu FROM users WHERE telegram_id = %s", (user_id,))
-    user = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    current_ids = user['referred_ids'] or ""
-    ref_count = len(current_ids.split(',')) if current_ids else 0
-
-    text = (
-        "🎁 **GIỚI THIỆU NHẬN XU**\n"
-        "────────────────────────\n"
-        f"🔗 Link của bạn:\n`{ref_link}`\n\n"
-        f"• Đã giới thiệu: `{ref_count}`\n"
-        f"• Thưởng nhận được: `{user['ref_xu']} Xu`"
+        f"👥 Đã giới thiệu: `{ref_count} người`\n"
+        f"🎁 Tổng Xu kiếm được từ ref: `{user['ref_xu']} Xu`"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -386,15 +442,11 @@ def admin_panel(message):
     text = (
         "👑 **BẢNG QUẢN TRỊ ADMIN**\n"
         "────────────────────────\n"
-        "Các lệnh trực tiếp:\n\n"
-        "1️⃣ Thêm kho tự động:\n"
         "• `/themkho level_5_8 [số_lượng]`\n"
         "• `/themkho level_30 [số_lượng]`\n"
-        "*(Ví dụ: `/themkho level_5_8 100`)*\n\n"
-        "2️⃣ Cộng xu:\n"
-        "• `/addxu [id_user] [số_xu]`\n\n"
-        "3️⃣ Thống kê:\n"
-        "• `/thongke`"
+        "• `/addxu [id_user] [số_xu]`\n"
+        "• `/thongke`\n"
+        "• `/thongbao [nội_dung]`"
     )
     bot.send_message(message.chat.id, text, parse_mode="Markdown")
 
@@ -405,7 +457,7 @@ def admin_add_stock_direct(message):
     
     parts = message.text.split()
     if len(parts) < 3:
-        bot.send_message(message.chat.id, "❌ Sai cú pháp!\n👉 Dùng: `/themkho level_5_8 100` hoặc `/themkho level_30 50`", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ Sai cú pháp! Dùng: `/themkho level_5_8 100`", parse_mode="Markdown")
         return
     
     category = parts[1]
@@ -414,7 +466,7 @@ def admin_add_stock_direct(message):
         return
         
     if not parts[2].isdigit():
-        bot.send_message(message.chat.id, "❌ Số lượng phải là một con số nguyên!")
+        bot.send_message(message.chat.id, "❌ Số lượng phải là số nguyên!")
         return
         
     count_to_add = int(parts[2])
@@ -434,7 +486,6 @@ def admin_add_stock_direct(message):
 
     cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_5_8' AND sold = FALSE")
     stock_5_8 = cur.fetchone()['count']
-
     cur.execute("SELECT COUNT(*) FROM accounts WHERE category = 'level_30' AND sold = FALSE")
     stock_30 = cur.fetchone()['count']
 
@@ -443,13 +494,9 @@ def admin_add_stock_direct(message):
     conn.close()
 
     response_text = (
-        f"✅ **ĐÃ THÊM KHO THÀNH CÔNG!**\n"
-        f"────────────────────────\n"
-        f"• Thêm vào: `{category}`\n"
-        f"• Số lượng tạo: `{added_count} acc`\n\n"
-        f"📦 Kho hiện tại:\n"
-        f"• Level 5–8: `{stock_5_8}`\n"
-        f"• Level 30: `{stock_30}`"
+        f"✅ **THÊM KHO THÀNH CÔNG!**\n"
+        f"• Loại: `{category}` | Thêm: `{added_count} acc`\n"
+        f"📦 Kho hiện tại -> 5-8: `{stock_5_8}` | 30: `{stock_30}`"
     )
     bot.send_message(message.chat.id, response_text, parse_mode="Markdown")
 
@@ -459,7 +506,7 @@ def admin_add_xu_direct(message):
         return
     parts = message.text.split()
     if len(parts) < 3 or not parts[1].isdigit() or not parts[2].isdigit():
-        bot.send_message(message.chat.id, "❌ Sai cú pháp!\n👉 Dùng: `/addxu [id_user] [số_xu]`", parse_mode="Markdown")
+        bot.send_message(message.chat.id, "❌ Sai cú pháp! Dùng: `/addxu [id_user] [số_xu]`", parse_mode="Markdown")
         return
         
     target_id = int(parts[1])
@@ -540,5 +587,6 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("✨ Bot đang chạy...")
+    print("✨ Bot đang chạy mượt mà...")
     bot.infinity_polling()
+ 
