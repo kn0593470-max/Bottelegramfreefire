@@ -18,7 +18,7 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAF3qsT9u6V-bB-hQI8ftJDiyISJHltFz_I')
+TOKEN = os.getenv('BOT_TOKEN')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
