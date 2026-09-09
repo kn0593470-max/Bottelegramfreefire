@@ -15,7 +15,7 @@ from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import InputPeerEmpty
 
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
-TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAEQzYZG1iX5bO0y46pWCesqKmlWucKoxlg')
+TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAGPpIJmuZUynAULs1IMnTcRstYvjhdpb84')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 7907990385
 REQUIRED_GROUP = "@genplaycluod"
@@ -141,7 +141,6 @@ def send_verification_prompt(chat_id):
 
 # ===== HÀM HIỂN THỊ MENU CHÍNH SHOP ACC =====
 def send_main_shop_menu(chat_id, user_id, message_id=None, edit=False):
-    # Ép buộc kiểm tra lại nhóm đối với cả người cũ lẫn mới trước khi mở shop
     if not check_user_membership(user_id):
         send_verification_prompt(chat_id)
         return
@@ -210,7 +209,6 @@ def handle_start(message):
     cur.close()
     conn.close()
 
-    # Kiểm tra nhóm bắt buộc ngay từ lệnh start
     if check_user_membership(user_id):
         verify_user(user_id)
         send_main_shop_menu(message.chat.id, user_id)
@@ -851,6 +849,5 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động!")
+    print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động với Token mới!")
     bot.infinity_polling()
- 
