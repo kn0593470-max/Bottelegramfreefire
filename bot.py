@@ -14,8 +14,8 @@ from telethon.tl.functions.account import GetAuthorizationsRequest, ResetAuthori
 from telethon.tl.functions.messages import GetDialogsRequest
 from telethon.tl.types import InputPeerEmpty
 
-# ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
-TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAGPpIJmuZUynAULs1IMnTcRstYvjhdpb84')
+# ===== CẤU HÌNH TOKEN TRỰC TIẾP =====
+TOKEN = '8483501766:AAGPpIJmuZUynAULs1IMnTcRstYvjhdpb84'
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 7907990385
 REQUIRED_GROUP = "@genplaycluod"
@@ -837,7 +837,7 @@ def admin_broadcast(message):
     success = 0
     for u in users:
         try:
-            bot.send_message(u['telegram_id'], f"📢 **THÔNG BÁO**\n\n{text_to_send}", parse_mode="Markdown")
+            bot.send_message(u['telegram_id'], f"📢 **THÔNG BÁO**\n\n{text_to_send}", parse_Mode="Markdown")
             success += 1
         except:
             pass
@@ -849,5 +849,6 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động với Token mới!")
+    print("✨ Bot đã được gắn cứng Token mới và sẵn sàng hoạt động!")
     bot.infinity_polling()
+ 
