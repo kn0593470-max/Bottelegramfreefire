@@ -1,3 +1,4 @@
-pyTelegramBotAPI==4.14.0
-psycopg==3.1.18
-flask==3.0.2
+pyTelegramBotAPI
+telethon
+flask
+psycopg[binary]
