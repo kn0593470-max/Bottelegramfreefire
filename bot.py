@@ -18,14 +18,15 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = os.getenv('BOT_TOKEN', '848350:ÂEQzYZG1iX5bO0y46pWCe')
+# Token Bot Telegram mới cập nhật
+TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAHVDtoOksBVBrNIThiSzyYAyXzOTb19m4I')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
 
-# Cấu hình Telethon API
-API_ID = int(os.getenv('API_ID', 0))
-API_HASH = os.getenv('API_HASH', '')
+# Cấu hình Telethon API mới cập nhật từ ảnh
+API_ID = int(os.getenv('API_ID', 36010894))
+API_HASH = os.getenv('API_HASH', '981df00e84d0e65e70e57595ec3eaa94')
 
 bot = telebot.TeleBot(TOKEN)
 
