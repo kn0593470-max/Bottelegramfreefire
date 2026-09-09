@@ -18,9 +18,9 @@ from telethon.tl.types import InputPeerEmpty
 # ===== CẤU HÌNH TOKEN VÀ BIẾN MÔI TRƯỜNG =====
 # ==========================================
 
-TOKEN = "8483501766:AAF3qsT9u6V-bB-hQl8ftJDiyISJHItFz_I"
+TOKEN = "8483501766:AAEZFBvqSFabbVYR33uyl4HDWugNiQzsPFw"
 DATABASE_URL = os.getenv('DATABASE_URL', '')
-ADMIN_ID = 7907990385
+ADMIN_ID = 79079
 REQUIRED_GROUP = "@genplaycluod"
 
 API_ID = 36010894
@@ -958,5 +958,5 @@ if __name__ == "__main__":
     flask_thread.daemon = True
     flask_thread.start()
 
-    print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động!")  
+    print("✨ Bot tích hợp Shop Acc + Botnet đã sẵn sàng hoạt động với Token mới!")  
     bot.infinity_polling(skip_pending=True)
